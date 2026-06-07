@@ -10,56 +10,70 @@ orden causal entre eventos distribuidos simulados.
 
 from queue import Queue, Empty
 from threading import Lock
+from typing import Optional, Any
 
 class LamportClock:
     """
     Implementación thread-safe del Reloj Lógico de Lamport.
-    Asegura que los eventos de los hilos se ordenen causalmente en el sistema distribuido.
+    Asegura ordenamiento causal en sistemas distribuidos.
     """
-    def __init__(self):
-        self.time = 0
-        self.lock = Lock() # Evita condiciones de carrera al actualizar el reloj
+    def __init__(self) -> None:
+        self.time: int = 0
+        self.lock: Lock = Lock()
 
-    def tick(self):
-        """Llamado cuando ocurre un evento local (ej. un sensor lee un dato)."""
+    def tick(self) -> int:
+        """
+        Incrementa el reloj local ante un evento.
+        
+        Returns:
+            int: El nuevo valor del reloj tras el tick.
+        """
         with self.lock:
             self.time += 1
             return self.time
 
-    def update(self, received_time):
-        """Llamado cuando se recibe un mensaje de otro nodo para sincronizar el reloj."""
+    def update(self, received_time: int) -> int:
+        """
+        Sincroniza el reloj local con un tiempo recibido.
+        
+        Args:
+            received_time (int): El timestamp recibido en un mensaje.
+            
+        Returns:
+            int: El nuevo valor del reloj tras la actualización.
+        """
         with self.lock:
             self.time = max(self.time, received_time) + 1
             return self.time
 
-    def get_time(self):
-        """Obtiene el tiempo actual sin incrementarlo."""
-        with self.lock:
-            return self.time
-
 class ThreadSafeQueue:
     """
-    Cola de mensajes segura para hilos. 
-    Los Nodos Sensores escribirán aquí y los Coordinadores Zonales leerán de aquí.
+    Cola de mensajes segura para hilos.
     """
-    def __init__(self):
-        self.q = Queue()
+    def __init__(self) -> None:
+        self.q: Queue = Queue()
 
-    def put(self, item):
-        """Inserta un elemento en la cola."""
+    def put(self, item: Any) -> None:
+        """
+        Inserta un objeto en la cola.
+        
+        Args:
+            item (Any): El mensaje o dato a encolar.
+        """
         self.q.put(item)
 
-    def get(self, timeout=None):
+    def get(self, timeout: Optional[float] = None) -> Optional[Any]:
         """
-        Extrae un elemento de la cola. 
-        Si hay un timeout y la cola está vacía, retorna None en lugar de bloquearse para siempre.
+        Extrae un elemento de la cola de forma segura.
+        
+        Args:
+            timeout (float, optional): Tiempo de espera para obtener datos.
+            
+        Returns:
+            Any: El objeto extraído, o None si la cola está vacía.
         """
         try:
             return self.q.get(timeout=timeout)
         except Empty:
             return None
-
-    def is_empty(self):
-        """Verifica si la cola está vacía."""
-        return self.q.empty()
-    
+        
