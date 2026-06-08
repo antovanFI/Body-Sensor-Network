@@ -5,13 +5,12 @@
 
 import random
 import time
-import wfdb
+from pathlib import Path
 from typing import Any, Generator
 
+import wfdb
+
 from utils.physiology_rules import PHYSIOLOGY_RANGES, SENSOR_LAYOUT
-
-
-from pathlib import Path
 
 
 def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
@@ -172,6 +171,45 @@ def generar_flujo_bidmc(
 
         time.sleep(pausa)
 
+def convertir_paquete_a_mensaje_data(
+    paquete: dict[str, Any],
+    lamport_timestamp: int = 0,
+) -> dict[str, Any] | None:
+    """
+    Convierte un paquete fisiológico al formato DATA esperado por ZoneCoordinator.
+
+    Las variables categóricas (ej. postura) se descartan porque el coordinador
+    únicamente fusiona señales numéricas mediante los votadores.
+    """
+
+    # El coordinador sólo puede fusionar señales numéricas.
+    # Variables categóricas como postura se procesan por otra vía.
+    if not isinstance(paquete["value"], (int, float)):
+        return None
+
+    return {
+        "type": "DATA",
+
+        # Identificador del sensor origen
+        "sender_id": paquete["sensor_id"],
+
+        # Zona corporal a la que pertenece el sensor
+        "zone_id": paquete["zone"],
+
+        # Formato esperado por validate_and_group()
+        "data": {
+            paquete["variable"]: paquete["value"]
+        },
+
+        "unit": paquete["unit"],
+
+        # Marca temporal original de adquisición
+        "source_timestamp": paquete["timestamp"],
+
+        # Tiempo lógico distribuido utilizado por Lamport
+        "lamport_timestamp": lamport_timestamp,
+    }
+
 # Alias en inglés para mantener compatibilidad con otros módulos del proyecto.
 generate_mock_value = generar_valor_simulado
 generate_sensor_packet = generar_paquete_sensor
@@ -180,14 +218,34 @@ generate_window = generar_ventana
 download_bidmc = descargar_bidmc #Alias específicos para el uso de datos desde el dataset de physionet
 load_bidmc_record = cargar_registro_bidmc
 generate_bidmc_stream = generar_flujo_bidmc
+convert_packet_to_data_message = convertir_paquete_a_mensaje_data #Alias para compatibilidad con zone_coordinator
 
 
 if __name__ == "__main__":
-    print("Descargando BIDMC si no existe...\n")
+    print("Ejemplo de conversión a mensaje DATA:\n")
 
-    descargar_bidmc()
+    # descargar_bidmc()
 
-    print("Flujo de datos reales BIDMC:\n")
+    paquete_prueba = generar_paquete_sensor("sensor_01", timestamp=1)
+    mensaje_data = convertir_paquete_a_mensaje_data(paquete_prueba, lamport_timestamp=1)
+
+    print("Paquete original:")
+    print(paquete_prueba)
+
+    # Validación opcional para sensores con variables categóricas como postura.
+    # Actualmente la prueba utiliza sensor_01, por lo que siempre debería generar
+    # un valor numérico compatible con ZoneCoordinator.
+
+    # if mensaje_data is None:
+    #     print("\nEl paquete no se convirtió porque contiene una variable no numérica.")
+    # else:
+    #     print("\nMensaje compatible con ZoneCoordinator:")
+    #     print(mensaje_data)
+
+    print("\nMensaje compatible con ZoneCoordinator:")
+    print(mensaje_data)
+
+    print("\nFlujo de datos reales BIDMC:\n")
 
     for paquete in generar_flujo_bidmc(limite_muestras=5, pausa=0.1):
         print(paquete)
