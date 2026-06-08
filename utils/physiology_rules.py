@@ -8,39 +8,41 @@ from typing import Any
 
 SENSOR_LAYOUT = {
     "sensor_01": {
-        "type": "ECG",  # Medidor de frecuencia cardíaca, variabilidad cardíaca y actividad eléctrica del corazón
-        "zone": "torax",  # Ubicar sensor entre la base del cuello y el diafragma
+        "type": "ECG",  #Medidor de frecuencia cardíaca, variabilidad cardíaca y actividad eléctrica del corazón
+        "zone": "torax",  #Ubicar sensor entre la base del cuello y el diafragma
         "variables": ["heart_rate", "hrv", "ecg_signal"],
     },
     "sensor_02": {
-        "type": "PPG",  # Medidor óptico para pulso periférico y saturación de oxígeno
-        "zone": "brazo_der",  # Ubicar sensor en brazo derecho por acceso periférico estable
+        "type": "PPG",  #Medidor óptico para pulso periférico y saturación de oxígeno
+        "zone": "brazo_der",  #Ubicar sensor en brazo derecho por acceso periférico estable
         "variables": ["spo2", "heart_rate", "pulse"],
     },
     "sensor_03": {
-        "type": "Termistor",  # Medidor de temperatura corporal superficial como señal global de referencia
-        "zone": "cabeza",  # Ubicar sensor en cabeza/frente
+        "type": "Termistor",  #Medidor de temperatura corporal superficial como señal global de referencia
+        "zone": "cabeza",  #Ubicar sensor en cabeza/frente
         "variables": ["temperature_c"],
     },
     "sensor_04": {
-        "type": "GSR",  # Medidor de conductancia galvánica asociada a actividad del sis. nerv. y sudoración
-        "zone": "brazo_izq",  # Ubicar sensor en brazo izquierdo como zona periférica de fácil colocación
+        "type": "GSR",  #Medidor de conductancia galvánica asociada a actividad del sis. nerv. y sudoración
+        "zone": "brazo_izq",  #Ubicar sensor en brazo izquierdo como zona periférica de fácil colocación
         "variables": ["skin_conductance", "humidity"],
     },
     "sensor_05": {
-        "type": "IMU",  # Medidor inercial para estimar frecuencia respiratoria y expansión torácica
-        "zone": "torax",  # Ubicar sensor en tórax por cercanía directa con la mecánica respiratoria
+        "type": "IMU",  #Medidor inercial para estimar frecuencia respiratoria y expansión torácica
+        "zone": "torax",  #Ubicar sensor en tórax por cercanía directa con la mecánica respiratoria
         "variables": ["resp_rate", "chest_expansion"],
     },
     "sensor_06": {
-        "type": "Acelerometro",  # Medidor de movimiento para contextualizar las lecturas del resto de los sensores
-        "zone": "piernas",  # Ubicar sensor en extremidades inferiores para detectar actividad y postura
+        "type": "Acelerometro",  #Medidor de movimiento para contextualizar las lecturas del resto de los sensores
+        "zone": "piernas",  #Ubicar sensor en extremidades inferiores para detectar actividad y postura
         "variables": ["movement", "posture"],
     },
 }
 
 
-# Rangos fisiológicos de referencia para adultos en reposo.
+#Rangos fisiológicos de referencia para adultos en reposo
+#Solo se definen parámetros de normalidad yconfort
+#Los umbrales de riesgo agudo viven en evaluate_risk_flags() y son intencionalmente más laxos
 PHYSIOLOGY_RANGES: dict[str, dict[str, float | str]] = {
     "heart_rate": {"min": 60.0, "max": 100.0, "unit": "bpm"},
     "hrv": {"min": 20.0, "max": 120.0, "unit": "ms"},
@@ -55,7 +57,7 @@ PHYSIOLOGY_RANGES: dict[str, dict[str, float | str]] = {
     "posture": {"min": 0.0, "max": 3.0, "unit": "class"},
 }
 
-
+#Tags sencillos para que los votadores trabajen con una salida discreta
 DIAGNOSIS_SEVERITY: dict[str, int] = {
     "normal": 0,
     "warning": 1,
@@ -74,7 +76,11 @@ def is_valid_reading(variable: str, value: float) -> bool:
 
 
 def evaluate_risk_flags(sample: dict[str, float]) -> list[str]:
-    """Genera banderas de riesgo fisiológico a partir de una muestra consolidada."""
+    #Genera banderas de riesgo fisiológico a partir de una muestra consolidada
+    """Los umbrales aquí son de ALARMA CLÍNICA AGUDA, deliberadamente
+    más relajados que los rangos de normalidad en reposo de PHYSIOLOGY_RANGES.
+    Un valor fuera del rango normal indica _no óptimo_ y estas banderas marcan
+    'riesgo agudo que exige atención'. Ej. resp_rate dispara en 22 y no en 20"""
     flags = []
 
     heart_rate = sample.get("heart_rate")
@@ -83,13 +89,13 @@ def evaluate_risk_flags(sample: dict[str, float]) -> list[str]:
     resp_rate = sample.get("resp_rate")
 
     if heart_rate is not None and temperature is not None:
-        if heart_rate > 100 and temperature > 38:
+        if heart_rate > 100 and temperature > 38:  #Regla simple: fiebre + taquicardia apunta a estrés
             flags.append("fever_tachycardia_risk")
 
-    if spo2 is not None and spo2 < 92:
+    if spo2 is not None and spo2 < 92:  #SpO2 baja se trata solamente como bandera respiratoria
         flags.append("respiratory_risk")
 
-    if resp_rate is not None and resp_rate > 22:
+    if resp_rate is not None and resp_rate > 22:  #Frec. respiratoria como señal de alerta que complementa
         flags.append("high_respiratory_rate")
 
     return flags

@@ -17,11 +17,11 @@ def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
     """Genera un valor simulado para una variable fisiológica."""
 
     if variable == "posture":
-        #Contexto de la posición física del paciente. Ayuda a interpretar otras lecturas como pulso o respiración.
+        #Contexto de la posición física del paciente que contextualiza otras lecturas como pulso o respiración
         return random.choice(["parado", "sentado", "acostado"]), "clase"
 
     if variable == "ecg_signal":
-        #Señal eléctrica cardiaca simulada. Se deja como señal cruda porque no es una métrica resumida como la FC.
+        #Señal eléctrica cardiaca simulada. Se deja como señal "cruda" porque no es una métrica resumida como la FC
         return round(random.uniform(-1.0, 1.0), 3), "mV"
 
     if variable in PHYSIOLOGY_RANGES:
@@ -30,20 +30,20 @@ def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
         maximo = float(limites["max"])
         unidad = str(limites["unit"])
 
-        #Genera un valor aleatorio dentro del rango que esperaríamos en una lectura fisiológica básica.
+        #Genera un valor aleatorio dentro del rango que esperaríamos en una lectura fisiológica básica
         valor = round(random.uniform(minimo, maximo), 2)
         return valor, unidad
 
     return round(random.uniform(0.0, 1.0), 2), "u.a."
 
 def generar_paquete_sensor(sensor_id: str, timestamp: int) -> dict[str, Any]:
-    """Genera un paquete individual de lectura para un sensor."""
+    """Genera un paquete individual de lectura para un sensor"""
 
     configuracion_sensor = SENSOR_LAYOUT[sensor_id]
     variable = random.choice(configuracion_sensor["variables"])
     valor, unidad = generar_valor_simulado(variable)
 
-    #Las llaves del paquete se dejan en inglés para mantener compatibilidad con los demás módulos del proyecto.
+    #Las llaves del paquete se dejan en inglés para mantener compatibilidad. Ya ha sido un problema con mis módulos
     paquete = {
         "sensor_id": sensor_id,
         "sensor_type": configuracion_sensor["type"],
@@ -67,7 +67,7 @@ def generar_flujo_sensores(
         for sensor_id in SENSOR_LAYOUT:
             yield generar_paquete_sensor(sensor_id, timestamp)
 
-        #Pausa breve para simular que las lecturas llegan por ventanas de tiempo y no todas de golpe.
+        #Pausa para simular que las lecturas llegan por ventanas de tiempo y no todas de golpe
         time.sleep(pausa)
 
 
@@ -96,7 +96,7 @@ def cargar_registro_bidmc(
     nombre_registro: str = "bidmc01",
     ruta_dataset: str = "data/bidmc",
 ):
-    """Carga un registro BIDMC previamente descargado."""
+    """""""Carga un registro BIDMC previamente descargado."""
 
     ruta_registro = str(Path(ruta_dataset) / nombre_registro)
     return wfdb.rdrecord(ruta_registro)
@@ -175,42 +175,22 @@ def convertir_paquete_a_mensaje_data(
     paquete: dict[str, Any],
     lamport_timestamp: int = 0,
 ) -> dict[str, Any] | None:
-    """
-    Convierte un paquete fisiológico al formato DATA esperado por ZoneCoordinator.
-
-    Las variables categóricas (ej. postura) se descartan porque el coordinador
-    únicamente fusiona señales numéricas mediante los votadores.
-    """
-
-    # El coordinador sólo puede fusionar señales numéricas.
-    # Variables categóricas como postura se procesan por otra vía.
+    """Convierte un paquete fisiológico al formato DATA de ZoneCoordinator"""
+    #El coordinador sólo fusiona señales en formato de número. Las categóricas (como postura) van por otra vía
     if not isinstance(paquete["value"], (int, float)):
         return None
 
     return {
-        "type": "DATA",
-
-        # Identificador del sensor origen
+        "type": "DATA",#Formato esperado por validate_and_group
         "sender_id": paquete["sensor_id"],
-
-        # Zona corporal a la que pertenece el sensor
         "zone_id": paquete["zone"],
-
-        # Formato esperado por validate_and_group()
-        "data": {
-            paquete["variable"]: paquete["value"]
-        },
-
+        "data": {paquete["variable"]: paquete["value"]},
         "unit": paquete["unit"],
-
-        # Marca temporal original de adquisición
         "source_timestamp": paquete["timestamp"],
-
-        # Tiempo lógico distribuido utilizado por Lamport
         "lamport_timestamp": lamport_timestamp,
     }
 
-# Alias en inglés para mantener compatibilidad con otros módulos del proyecto.
+#Alias en inglés para mantener compatibilidad con otros módulos del proyecto:
 generate_mock_value = generar_valor_simulado
 generate_sensor_packet = generar_paquete_sensor
 generate_sensor_stream = generar_flujo_sensores
@@ -232,9 +212,8 @@ if __name__ == "__main__":
     print("Paquete original:")
     print(paquete_prueba)
 
-    # Validación opcional para sensores con variables categóricas como postura.
-    # Actualmente la prueba utiliza sensor_01, por lo que siempre debería generar
-    # un valor numérico compatible con ZoneCoordinator.
+    #Validación opcional para sensores con variables categóricas como postura.
+    #Actualmente la prueba utiliza sensor_01, por lo que siempre debería generar un valor numérico compatible con ZoneCoordinator.
 
     # if mensaje_data is None:
     #     print("\nEl paquete no se convirtió porque contiene una variable no numérica.")
