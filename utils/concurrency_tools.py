@@ -8,37 +8,72 @@ Incluye primitivas thread-safe y reloj lógico de Lamport para mantener
 orden causal entre eventos distribuidos simulados.
 """
 
-from queue import Queue
+from queue import Queue, Empty
 from threading import Lock
-
-
-class QueueFactory:
-    """Fábrica/registro de colas seguras para canales de comunicación."""
-
-    def __init__(self) -> None:
-        """Inicializa estructura interna de registro de colas."""
-        pass
-
-    def get_queue(self, channel_name: str, maxsize: int = 0) -> Queue:
-        """Retorna una cola thread-safe asociada a `channel_name`"""
-        pass
-
+from typing import Optional, Any
 
 class LamportClock:
-    """Implementa el reloj lógico de Lamport para eventos distribuidos"""
-
-    def __init__(self, initial_time: int = 0) -> None:
-        """Inicializa contador lógico y lock interno."""
-        pass
+    """
+    Implementación thread-safe del Reloj Lógico de Lamport.
+    Asegura ordenamiento causal en sistemas distribuidos.
+    """
+    def __init__(self) -> None:
+        self.time: int = 0
+        self.lock: Lock = Lock()
 
     def tick(self) -> int:
-        """Incrementa el reloj en un evento local/envío y retorna valor."""
-        pass
+        """
+        Incrementa el reloj local ante un evento.
+        
+        Returns:
+            int: El nuevo valor del reloj tras el tick.
+        """
+        with self.lock:
+            self.time += 1
+            return self.time
 
     def update(self, received_time: int) -> int:
-        """Actualiza el reloj al recibir un mensaje remoto."""
-        pass
+        """
+        Sincroniza el reloj local con un tiempo recibido.
+        
+        Args:
+            received_time (int): El timestamp recibido en un mensaje.
+            
+        Returns:
+            int: El nuevo valor del reloj tras la actualización.
+        """
+        with self.lock:
+            self.time = max(self.time, received_time) + 1
+            return self.time
 
-    def read(self) -> int:
-        """Lee el valor lógico actual sin modificarlo."""
-        pass
+class ThreadSafeQueue:
+    """
+    Cola de mensajes segura para hilos.
+    """
+    def __init__(self) -> None:
+        self.q: Queue = Queue()
+
+    def put(self, item: Any) -> None:
+        """
+        Inserta un objeto en la cola.
+        
+        Args:
+            item (Any): El mensaje o dato a encolar.
+        """
+        self.q.put(item)
+
+    def get(self, timeout: Optional[float] = None) -> Optional[Any]:
+        """
+        Extrae un elemento de la cola de forma segura.
+        
+        Args:
+            timeout (float, optional): Tiempo de espera para obtener datos.
+            
+        Returns:
+            Any: El objeto extraído, o None si la cola está vacía.
+        """
+        try:
+            return self.q.get(timeout=timeout)
+        except Empty:
+            return None
+        
