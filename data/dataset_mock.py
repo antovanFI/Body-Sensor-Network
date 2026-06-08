@@ -1,60 +1,93 @@
 #!/usr/bin/env python3
-# Autores:            Brito Segura Angel, Luna Gutierrez Vicente & Medina Varela Abraham
-# Fecha de creación:  07/06/2026
-# Descripción:        Lectura/generación de datos clínicos simulados para sensores BSN
+# Autores: Brito Segura Angel, Luna Gutierrez Vicente & Medina Varela Abraham
+# Fecha de creación: 07/06/2026
+# Descripción: Generador de datos fisiológicos simulados para alimentar la red de sensores corporales.
 
-"""
-Este módulo puede consumir datasets reales (por ejemplo PhysioNet/CSV) o
-producir señales sintéticas para pruebas de carga y tolerancia a fallos.
-"""
+import random
+import time
+from typing import Any, Generator
 
-from collections.abc import Iterator
-from typing import Any
+from utils.physiology_rules import PHYSIOLOGY_RANGES, SENSOR_LAYOUT
 
 
-class ClinicalDatasetReader:
-    """Abstrae la lectura de datos fisiológicos desde una fuente externa.
+def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
+    """Genera un valor simulado para una variable fisiológica."""
 
-    Lógica esperada:
-    - Parsear columnas relevantes (ECG, SpO2, presión, temperatura, etc.).
-    - Normalizar unidades y validar valores faltantes.
-    - Entregar muestras temporales listas para la capa de sensores.
-    """
+    if variable == "posture":
+        #Contexto de la posición física del paciente. Ayuda a interpretar otras lecturas como pulso o respiración.
+        return random.choice(["parado", "sentado", "acostado"]), "clase"
 
-    def __init__(self, source_path: str) -> None:
-        """Configura ruta del dataset y metadatos de lectura."""
-        pass
+    if variable == "ecg_signal":
+        #Señal eléctrica cardiaca simulada. Se deja como señal cruda porque no es una métrica resumida como la FC.
+        return round(random.uniform(-1.0, 1.0), 3), "mV"
 
-    def load(self) -> list[dict[str, Any]]:
-        """Carga y retorna registros clínicos estructurados.
+    if variable in PHYSIOLOGY_RANGES:
+        limites = PHYSIOLOGY_RANGES[variable]
+        minimo = float(limites["min"])
+        maximo = float(limites["max"])
+        unidad = str(limites["unit"])
 
-        La implementación debería:
-        - Leer CSV/JSON de forma robusta.
-        - Manejar errores de formato.
-        - Convertir cada fila a un diccionario tipado.
-        """
-        pass
+        #Genera un valor aleatorio dentro del rango que esperaríamos en una lectura fisiológica básica.
+        valor = round(random.uniform(minimo, maximo), 2)
+        return valor, unidad
+
+    return round(random.uniform(0.0, 1.0), 2), "u.a."
+
+def generar_paquete_sensor(sensor_id: str, timestamp: int) -> dict[str, Any]:
+    """Genera un paquete individual de lectura para un sensor."""
+
+    configuracion_sensor = SENSOR_LAYOUT[sensor_id]
+    variable = random.choice(configuracion_sensor["variables"])
+    valor, unidad = generar_valor_simulado(variable)
+
+    #Las llaves del paquete se dejan en inglés para mantener compatibilidad con los demás módulos del proyecto.
+    paquete = {
+        "sensor_id": sensor_id,
+        "sensor_type": configuracion_sensor["type"],
+        "zone": configuracion_sensor["zone"],
+        "variable": variable,
+        "value": valor,
+        "unit": unidad,
+        "timestamp": timestamp,
+    }
+
+    return paquete
 
 
-class DataStreamGenerator:
-    """Genera flujos continuos de muestras para sensores concurrentes.
+def generar_flujo_sensores(
+    iteraciones: int = 10,
+    pausa: float = 0.5,
+) -> Generator[dict[str, Any], None, None]:
+    """Genera un flujo de paquetes simulando lecturas de todos los sensores."""
 
-    Lógica matemática esperada:
-    - Modelar ruido gaussiano para variabilidad fisiológica.
-    - Introducir outliers controlados para probar votadores.
-    - Ajustar frecuencia de emisión por tipo de sensor.
-    """
+    for timestamp in range(iteraciones):
+        for sensor_id in SENSOR_LAYOUT:
+            yield generar_paquete_sensor(sensor_id, timestamp)
 
-    def __init__(self, seed: int | None = None) -> None:
-        """Inicializa estado pseudoaleatorio para reproducibilidad."""
-        pass
+        #Pausa breve para simular que las lecturas llegan por ventanas de tiempo y no todas de golpe.
+        time.sleep(pausa)
 
-    def stream_for_sensor(self, sensor_id: str) -> Iterator[dict[str, Any]]:
-        """Produce un iterador infinito/finito de muestras para un sensor.
 
-        Se espera incluir:
-        - Marca de tiempo física.
-        - Magnitud fisiológica principal.
-        - Etiquetas de calidad de señal.
-        """
-        pass
+def generar_ventana(
+    window_id: int,
+) -> list[dict[str, Any]]:
+    """Genera una ventana de tiempo con una lectura por sensor."""
+
+    return [
+        generar_paquete_sensor(sensor_id, window_id)
+        for sensor_id in SENSOR_LAYOUT
+    ]
+
+
+# Alias en inglés para mantener compatibilidad con otros módulos del proyecto.
+generate_mock_value = generar_valor_simulado
+generate_sensor_packet = generar_paquete_sensor
+generate_sensor_stream = generar_flujo_sensores
+generate_window = generar_ventana
+
+
+if __name__ == "__main__":
+    print("Flujo de datos fisiológicos simulados:\n")
+
+    for paquete in generar_flujo_sensores(iteraciones=3, pausa=0.2):
+        print(paquete)
