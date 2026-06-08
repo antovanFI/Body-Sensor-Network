@@ -1,0 +1,4 @@
+#Librerias esenciales para correr el programa
+wfdb
+pandas
+numpy
