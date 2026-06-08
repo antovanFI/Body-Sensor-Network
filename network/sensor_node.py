@@ -3,7 +3,6 @@
 # Fecha de creación:  07/06/2026
 # Descripción:        Definición del nodo sensor individual ejecutado en hilo
 
-
 """
 Cada sensor:
 - captura/genera muestras fisiológicas,
@@ -11,38 +10,69 @@ Cada sensor:
 - y publica mensajes en colas thread-safe hacia su zona
 """
 
-from threading import Event, Thread
-from typing import Any
+from threading import Thread
+from typing import Dict, Any
+import time
+import random
 
-from utils.concurrency_tools import LamportClock
-
+from utils.concurrency_tools import LamportClock, ThreadSafeQueue
 
 class SensorNode(Thread):
-    """Representa un sensor corporal concurrente dentro de la BSN"""
-
-    def __init__(
-        self,
-        sensor_id: str,
-        zone_id: str,
-        outbound_queue: Any,
-        lamport_clock: LamportClock,
-    ) -> None:
-        # Configura identidad, cola de salida y reloj lógico compartido/local
-        super().__init__(daemon=True)
-        pass
-
-    def collect_sample(self) -> dict[str, Any]:
-        # Obtiene una muestra fisiológica del flujo asociado al sensor
-        pass
-
-    def build_message(self, sample: dict[str, Any]) -> dict[str, Any]:
-        # Construye mensaje de red con metadata causal y de trazabilidad
-        pass
+    """
+    Hilo de ejecución para un sensor fisiológico.
+    """
+    def __init__(self, sensor_id: str, zone: str, logical_clock: LamportClock, 
+                 out_queue: ThreadSafeQueue) -> None:
+        """
+        Args:
+            sensor_id (str): Identificador único del sensor.
+            zone (str): Zona anatómica asignada.
+            logical_clock (LamportClock): Instancia compartida del reloj lógico.
+            out_queue (ThreadSafeQueue): Cola destino para los datos recolectados.
+        """
+        super().__init__()
+        self.sensor_id = sensor_id
+        self.zone = zone
+        self.clock = logical_clock
+        self.out_queue = out_queue
+        self.running: bool = True
 
     def stop(self) -> None:
-        """Solicita detención cooperativa del hilo del sensor."""
-        pass
+        """Detiene la ejecución del hilo."""
+        self.running = False
 
     def run(self) -> None:
-        # Bucle principal del sensor: captura, construye mensaje y publica
-        pass
+        """
+        Bucle de ejecución del sensor.
+        Genera lecturas, timestamp y pone en cola.
+        
+        Returns:
+            None
+        """
+        while self.running:
+            # Reloj avanza porque ocurrió un evento (lectura)
+            current_time = self.clock.tick()
+            
+            # TODO: Debe ser reemplazado por llamadas a dataset_mock.py
+            # Generación de dato aleatorio dentro de rangos fisiológicos
+            data: Dict[str, Any] = {
+                "temperatura": round(random.uniform(36.0, 39.0), 1),
+                "ritmo_cardiaco": int(random.uniform(60, 100))
+            }
+            
+            # Creación del paquete
+            payload: Dict[str, Any] = {
+                "timestamp": current_time,
+                "sensor_id": self.sensor_id,
+                "zone": self.zone,
+                "data": data
+            }
+            
+            # Envío a la cola del coordinador zonal
+            self.out_queue.put(payload)
+
+            print(f"[{self.zone} - {self.sensor_id}] Dato enviado. Lamport: {current_time}")
+            
+            # Esperar un momento antes de la siguiente lectura (simula frecuencia de muestreo)
+            time.sleep(random.uniform(0.5, 1.5))
+            
