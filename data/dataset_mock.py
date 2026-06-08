@@ -5,9 +5,13 @@
 
 import random
 import time
+import wfdb
 from typing import Any, Generator
 
 from utils.physiology_rules import PHYSIOLOGY_RANGES, SENSOR_LAYOUT
+
+
+from pathlib import Path
 
 
 def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
@@ -78,16 +82,112 @@ def generar_ventana(
         for sensor_id in SENSOR_LAYOUT
     ]
 
+def descargar_bidmc(ruta_destino: str = "data/bidmc") -> None:
+    """Descarga el dataset BIDMC desde PhysioNet."""
+
+    Path(ruta_destino).mkdir(parents=True, exist_ok=True)
+
+    wfdb.dl_database(
+        db_dir="bidmc",
+        dl_dir=ruta_destino,
+    )
+
+
+def cargar_registro_bidmc(
+    nombre_registro: str = "bidmc01",
+    ruta_dataset: str = "data/bidmc",
+):
+    """Carga un registro BIDMC previamente descargado."""
+
+    ruta_registro = str(Path(ruta_dataset) / nombre_registro)
+    return wfdb.rdrecord(ruta_registro)
+
+
+def generar_flujo_bidmc(
+    nombre_registro: str = "bidmc01",
+    ruta_dataset: str = "data/bidmc",
+    limite_muestras: int = 20,
+    pausa: float = 0.1,
+) -> Generator[dict[str, Any], None, None]:
+    """Convierte un registro BIDMC real en paquetes compatibles con la red de sensores."""
+
+    registro = cargar_registro_bidmc(nombre_registro, ruta_dataset)
+    #print("Señales disponibles en el registro:", registro.sig_name)
+
+    senales = registro.p_signal
+    nombres_senales = registro.sig_name
+
+    mapa_senales = {
+        "PLETH": {
+            "sensor_id": "sensor_02",
+            "sensor_type": "PPG",
+            "zone": "brazo_der",
+            "variable": "ppg_signal",
+            "unit": "u.a.",
+        },
+        "RESP": {
+            "sensor_id": "sensor_05",
+            "sensor_type": "IMU",
+            "zone": "torax",
+            "variable": "resp_signal",
+            "unit": "u.a.",
+        },
+        "II": {
+            "sensor_id": "sensor_01",
+            "sensor_type": "ECG",
+            "zone": "torax",
+            "variable": "ecg_signal",
+            "unit": "mV",
+        },
+        "V": {
+            "sensor_id": "sensor_01",
+            "sensor_type": "ECG",
+            "zone": "torax",
+            "variable": "ecg_signal",
+            "unit": "mV",
+        },
+    }
+
+    for timestamp, fila in enumerate(senales[:limite_muestras]):
+        for indice, nombre_senal in enumerate(nombres_senales):
+            nombre_senal = nombre_senal.replace(",", "").strip()
+
+            if nombre_senal not in mapa_senales:
+                continue
+
+            base = mapa_senales[nombre_senal]
+
+            paquete = {
+                "sensor_id": base["sensor_id"],
+                "sensor_type": base["sensor_type"],
+                "zone": base["zone"],
+                "variable": base["variable"],
+                "value": round(float(fila[indice]), 4),
+                "unit": base["unit"],
+                "timestamp": timestamp,
+                "source": "physionet_bidmc",
+            }
+
+            yield paquete
+
+        time.sleep(pausa)
 
 # Alias en inglés para mantener compatibilidad con otros módulos del proyecto.
 generate_mock_value = generar_valor_simulado
 generate_sensor_packet = generar_paquete_sensor
 generate_sensor_stream = generar_flujo_sensores
 generate_window = generar_ventana
+download_bidmc = descargar_bidmc #Alias específicos para el uso de datos desde el dataset de physionet
+load_bidmc_record = cargar_registro_bidmc
+generate_bidmc_stream = generar_flujo_bidmc
 
 
 if __name__ == "__main__":
-    print("Flujo de datos fisiológicos simulados:\n")
+    print("Descargando BIDMC si no existe...\n")
 
-    for paquete in generar_flujo_sensores(iteraciones=3, pausa=0.2):
+    descargar_bidmc()
+
+    print("Flujo de datos reales BIDMC:\n")
+
+    for paquete in generar_flujo_bidmc(limite_muestras=5, pausa=0.1):
         print(paquete)
