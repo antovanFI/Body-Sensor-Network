@@ -21,8 +21,16 @@ def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
         return random.choice(["parado", "sentado", "acostado"]), "clase"
 
     if variable == "ecg_signal":
-        #Señal eléctrica cardiaca simulada. Se deja como señal "cruda" porque no es una métrica resumida como la FC
+        #Señal eléctrica cardiaca simulada...
         return round(random.uniform(-1.0, 1.0), 3), "mV"
+
+    # === INICIO DE INYECCIÓN DE FALLO BIZANTINO PARA PRUEBAS ===
+    # Comentar en caso querer flujo normal sin fallos.
+    # if variable == "heart_rate":
+        # 30% de probabilidad de que el sensor sufra un fallo y lea 800 bpm
+    #     if random.random() < 0.3:
+    #         return 800.0, "bpm"
+    # === FIN DE INYECCIÓN ===
 
     if variable in PHYSIOLOGY_RANGES:
         limites = PHYSIOLOGY_RANGES[variable]
@@ -36,7 +44,7 @@ def generar_valor_simulado(variable: str) -> tuple[float | str, str]:
 
     return round(random.uniform(0.0, 1.0), 2), "u.a."
 
-def generar_paquete_sensor(sensor_id: str, timestamp: int) -> dict[str, Any]:
+def generar_paquete_sensor(sensor_id: str, timestamp: int) -> dict[str, Any]:#
     """Genera un paquete individual de lectura para un sensor"""
 
     configuracion_sensor = SENSOR_LAYOUT[sensor_id]
