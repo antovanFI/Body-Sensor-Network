@@ -54,26 +54,7 @@ class SensorNode(Thread):
             # Reloj avanza porque ocurrió un evento (lectura)
             current_time = self.clock.tick()
             
-            # TODO: Debe ser reemplazado por llamadas a dataset_mock.py
-
-            # Generación de dato aleatorio dentro de rangos fisiológicos
-            # Se deja comentada para conservar la referencia del primer enfoque.
-            #
-            # data: Dict[str, Any] = {
-            #     "temperatura": round(random.uniform(36.0, 39.0), 1),
-            #     "ritmo_cardiaco": int(random.uniform(60, 100))
-            # }
-            #
-            # payload: Dict[str, Any] = {
-            #     "timestamp": current_time,
-            #     "sensor_id": self.sensor_id,
-            #     "zone": self.zone,
-            #     "data": data
-            # }
-            #
-            # self.out_queue.put(payload)
-
-            # RESUELTO: La lectura sale desde dataset_mock.py para mantener una sola fuente de datos
+            # Lectura sale desde dataset_mock.py para mantener una sola fuente de datos
             paquete_sensor = generar_paquete_sensor(self.sensor_id, timestamp=current_time)
 
             payload = convertir_paquete_a_mensaje_data(
