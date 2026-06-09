@@ -51,6 +51,10 @@ class SimulationOrchestrator:
         for zone in self.zones:
             self.zone_queues[zone] = ThreadSafeQueue()
             
+            # ==== Prueba 3 ==== -> Comentar de no ser necesaria
+            # El tórax tendrá dos coordinadores (ID 1 e ID 2). El resto, solo uno.
+            # peer_list = [1, 2] if zone == "torax" else [1]
+            
             # Se asigna ID=1 al nodo principal.
             election = BullyElection(
                 node_id=1, 
@@ -67,6 +71,24 @@ class SimulationOrchestrator:
                 lamport_clock=self.lamport_clock
             )
             self.coordinators.append(coordinator)
+            
+            # ==== Prueba 3 ==== -> Comentar de no ser necesaria
+            # Instanciar el nodo de respaldo específico para la prueba del algoritmo Bully
+            # if zone == "torax":
+            #     election_backup = BullyElection(
+            #         node_id=2, 
+            #         peer_ids=peer_list, 
+            #         zone_id=zone, 
+            #         outbound_queue=self.zone_queues[zone]
+            #     )
+            #     coordinator_backup = ZoneCoordinator(
+            #         zone_id=zone,
+            #         inbound_queue=self.zone_queues[zone],
+            #         outbound_queue=self.global_queue,
+            #         election=election_backup,
+            #         lamport_clock=self.lamport_clock
+            #     )
+            #     self.coordinators.append(coordinator_backup)
             
         # Se instancian los nodos generadores de datos fisiológicos
         for sensor_id, config in SENSOR_LAYOUT.items():
@@ -129,9 +151,20 @@ def main() -> None:
 
     try:
         orchestrator.start()
+        # ==== Prueba 3 ==== -> Comentar de no ser necesaria
+        # segundos = 0
         # Bucle pasivo para mantener el proceso principal activo
         while True:
             time.sleep(1)
+            # ==== Prueba 3 ==== -> Comentar de no ser necesaria
+            # segundos += 1
+            # # Simular la caída catastrófica del servidor principal del tórax a los 10 segundos
+            # if segundos == 10:
+            #     print("\n==== [FALLO INDUCIDO] Deteniendo nodo Líder del TORAX (ID 2) para forzar algoritmo Bully... ====")
+            #     for coord in orchestrator.coordinators:
+            #         if coord.zone_id == "torax" and coord.election.node_id == 2:
+            #             coord.stop()
+
     except KeyboardInterrupt:
         orchestrator.stop()
         sys.exit(0)
