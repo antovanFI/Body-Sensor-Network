@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 # Autores:            Brito Segura Angel, Luna Gutierrez Vicente & Medina Varela Abraham
-# Fecha de creación:  07/06/2026
+# Fecha de creación:  08/06/2026
 # Descripción:        Punto de entrada de la simulación de Body Sensor Network (BSN)
 
 """
 Este módulo define la orquestación de alto nivel del sistema:
-- Inicialización de recursos compartidos (colas seguras, reloj lógico y reglas clínicas).
+- Inicialización de recursos compartidos (colas seguras, reloj lógico).
 - Creación de nodos sensores por zona.
 - Activación de coordinadores zonales con elección de líder dinámica.
 - Arranque del consenso global para emitir diagnóstico final.
-
-La implementación final debe mantener concurrencia estricta:
-- Cada actor principal ejecuta en su propio hilo (`threading.Thread`).
-- El intercambio de mensajes se realiza con colas thread-safe.
-- El orden causal de eventos se rastrea con reloj de Lamport.
 """
 
-from data.dataset_mock import DataStreamGenerator
+import time
+import sys
+
+from consensus.leader_election import BullyElection
 from network.global_system import GlobalSystem
 from network.sensor_node import SensorNode
 from network.zone_coordinator import ZoneCoordinator
-from utils.concurrency_tools import LamportClock, QueueFactory
-from utils.physiology_rules import PHYSIOLOGY_RANGES
-
+from utils.concurrency_tools import LamportClock, ThreadSafeQueue
+from utils.physiology_rules import SENSOR_LAYOUT
 
 class SimulationOrchestrator:
     """Orquesta el ciclo de vida completo de la simulación BSN.
@@ -32,33 +29,112 @@ class SimulationOrchestrator:
     """
 
     def __init__(self) -> None:
-        # Inicializa recursos compartidos y estructuras de control.
-        pass
+        # Inicialización de recursos compartidos y estructuras de control
+        self.lamport_clock = LamportClock()
+        self.global_queue = ThreadSafeQueue()
+        self.zone_queues: dict[str, ThreadSafeQueue] = {}
+        
+        self.sensors: list[SensorNode] = []
+        self.coordinators: list[ZoneCoordinator] = []
+        self.global_system: GlobalSystem | None = None
+        
+        # Extracción de zonas anatómicas únicas desde la configuración
+        self.zones = set(config["zone"].lower() for config in SENSOR_LAYOUT.values())
 
     def build_topology(self) -> None:
-        # Construye sensores, coordinadores zonales y sistema global.
-        pass
+        """Construye sensores, coordinadores zonales y sistema global."""
+        
+        # Se instancia el nodo de consenso central
+        self.global_system = GlobalSystem(inbound_queue=self.global_queue)
+        
+        # Construimos la arquitectura de borde (zonas)
+        for zone in self.zones:
+            self.zone_queues[zone] = ThreadSafeQueue()
+            
+            # Se asigna ID=1 al nodo principal.
+            election = BullyElection(
+                node_id=1, 
+                peer_ids=[1], 
+                zone_id=zone, 
+                outbound_queue=self.zone_queues[zone]
+            )
+            
+            coordinator = ZoneCoordinator(
+                zone_id=zone,
+                inbound_queue=self.zone_queues[zone],
+                outbound_queue=self.global_queue,
+                election=election,
+                lamport_clock=self.lamport_clock
+            )
+            self.coordinators.append(coordinator)
+            
+        # Se instancian los nodos generadores de datos fisiológicos
+        for sensor_id, config in SENSOR_LAYOUT.items():
+            zone = config["zone"].lower()
+            sensor = SensorNode(
+                sensor_id=sensor_id,
+                zone=zone,
+                logical_clock=self.lamport_clock,
+                out_queue=self.zone_queues[zone]
+            )
+            self.sensors.append(sensor)
 
     def start(self) -> None:
-        # Inicia todos los hilos en el orden correcto.
-        pass
+        """Inicia todos los hilos en el orden correcto."""
+        print("==== Iniciando Simulación BSN Distribuida ====")
+        
+        if self.global_system:
+            self.global_system.start()
+        
+        for coordinator in self.coordinators:
+            coordinator.start()
+            
+        for sensor in self.sensors:
+            sensor.start()
+            
+        print("Hilos en ejecución. Esperando heartbeat y convergencia de líderes (Bully ~3s)...")
+        print("Presiona Ctrl+C para detener la simulación.\n")
 
     def stop(self) -> None:
-        # Detiene la simulación de forma segura y determinista.
-        pass
+        """Detiene la simulación de forma segura."""
+        print("\n==== Deteniendo simulación de red ====")
+        
+        # Se transmiten señales de detención cooperativa
+        for sensor in self.sensors:
+            sensor.stop()
+            
+        for coordinator in self.coordinators:
+            coordinator.stop()
+            
+        if self.global_system:
+            self.global_system.stop()
+            
+        # Esperar convergencia y cierre de hilos del sistema operativo
+        for sensor in self.sensors:
+            sensor.join(timeout=1.0)
+            
+        for coordinator in self.coordinators:
+            coordinator.join(timeout=1.0)
+            
+        if self.global_system:
+            self.global_system.join(timeout=1.0)
+            
+        print("Simulación distribuida finalizada correctamente.")
 
 
 def main() -> None:
-    # Ejecuta la simulación BSN como script principal.
+    """Punto de ejecución central."""
     orchestrator = SimulationOrchestrator()
     orchestrator.build_topology()
 
     try:
         orchestrator.start()
+        # Bucle pasivo para mantener el proceso principal activo
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
-        pass
-    finally:
         orchestrator.stop()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
